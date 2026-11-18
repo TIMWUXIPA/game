@@ -10,7 +10,7 @@ function GameManager(size, InputManager, Actuator, StorageManager) {
   this.inputManager.on("restart", this.restart.bind(this));
   this.inputManager.on("keepPlaying", this.keepPlaying.bind(this));
 
-  this.setup();
+  this.setup(true);
 }
 
 // Restart the game
@@ -32,8 +32,9 @@ GameManager.prototype.isGameTerminated = function () {
 };
 
 // Set up the game
-GameManager.prototype.setup = function () {
+GameManager.prototype.setup = function (readOnly) {
   var previousState = this.storageManager.getGameState();
+  if (!this.isValidGameState(previousState)) previousState = null;
 
   // Reload the game from a previous game if present
   if (previousState) {
@@ -54,8 +55,37 @@ GameManager.prototype.setup = function () {
     this.addStartTiles();
   }
 
-  // Update the actuator
-  this.actuate();
+  // Loading is read-only: keep even a rejected save until the user plays/restarts.
+  this.actuate(readOnly);
+};
+
+// Validate the serialized shape before Grid/Tile dereference it.
+GameManager.prototype.isValidGameState = function (state) {
+  function nonnegativeInteger(value) {
+    return typeof value === "number" && isFinite(value) &&
+           value >= 0 && value <= 9007199254740991 && Math.floor(value) === value;
+  }
+
+  if (!state || typeof state !== "object" || !state.grid ||
+      state.grid.size !== this.size || !Array.isArray(state.grid.cells) ||
+      state.grid.cells.length !== this.size || !nonnegativeInteger(state.score) ||
+      typeof state.over !== "boolean" || typeof state.won !== "boolean" ||
+      typeof state.keepPlaying !== "boolean") return false;
+
+  for (var x = 0; x < this.size; x++) {
+    var row = state.grid.cells[x];
+    if (!Array.isArray(row) || row.length !== this.size) return false;
+    for (var y = 0; y < this.size; y++) {
+      var tile = row[y];
+      if (tile === null) continue;
+      if (!tile || !tile.position || tile.position.x !== x || tile.position.y !== y ||
+          !nonnegativeInteger(tile.value) || tile.value < 2) return false;
+      var value = tile.value;
+      while (value > 1 && value % 2 === 0) value /= 2;
+      if (value !== 1) return false;
+    }
+  }
+  return true;
 };
 
 // Set up the initial tiles to start the game with
@@ -76,16 +106,18 @@ GameManager.prototype.addRandomTile = function () {
 };
 
 // Sends the updated grid to the actuator
-GameManager.prototype.actuate = function () {
-  if (this.storageManager.getBestScore() < this.score) {
-    this.storageManager.setBestScore(this.score);
-  }
+GameManager.prototype.actuate = function (readOnly) {
+  if (!readOnly) {
+    if (this.storageManager.getBestScore() < this.score) {
+      this.storageManager.setBestScore(this.score);
+    }
 
-  // Clear the state when the game is over (game over only, not win)
-  if (this.over) {
-    this.storageManager.clearGameState();
-  } else {
-    this.storageManager.setGameState(this.serialize());
+    // Clear the state only during play, never merely on page load.
+    if (this.over) {
+      this.storageManager.clearGameState();
+    } else {
+      this.storageManager.setGameState(this.serialize());
+    }
   }
 
   this.actuator.actuate(this.grid, {

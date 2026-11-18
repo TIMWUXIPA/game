@@ -50,8 +50,13 @@ LocalStorageManager.prototype.setBestScore = function (score) {
 
 // Game state getters/setters and clearing
 LocalStorageManager.prototype.getGameState = function () {
-  var stateJSON = this.storage.getItem(this.gameStateKey);
-  return stateJSON ? JSON.parse(stateJSON) : null;
+  try {
+    var stateJSON = this.storage.getItem(this.gameStateKey);
+    return stateJSON ? JSON.parse(stateJSON) : null;
+  } catch (error) {
+    // A bad save must not prevent startup or erase the user's stored data.
+    return null;
+  }
 };
 
 LocalStorageManager.prototype.setGameState = function (gameState) {

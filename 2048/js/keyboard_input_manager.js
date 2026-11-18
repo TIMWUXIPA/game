@@ -49,8 +49,21 @@ KeyboardInputManager.prototype.listen = function () {
     65: 3  // A
   };
 
+  var gameContainer = document.getElementsByClassName("game-container")[0];
+
+  // Only the focused board owns gameplay keys. Other page areas keep scrolling.
   // Respond to direction keys
   document.addEventListener("keydown", function (event) {
+    // Leave controls (including their descendants) and editors to the browser.
+    var target = event.target;
+    while (target && target !== document) {
+      if (/^(INPUT|SELECT|TEXTAREA|BUTTON|OPTION|A)$/.test(target.tagName) ||
+          target.isContentEditable) return;
+      target = target.parentNode;
+    }
+
+    if (event.target !== gameContainer) return;
+
     var modifiers = event.altKey || event.ctrlKey || event.metaKey ||
                     event.shiftKey;
     var mapped    = map[event.which];
@@ -75,9 +88,12 @@ KeyboardInputManager.prototype.listen = function () {
 
   // Respond to swipe events
   var touchStartClientX, touchStartClientY;
-  var gameContainer = document.getElementsByClassName("game-container")[0];
-
+  function onControl(event) { return event.target && event.target.closest && event.target.closest("button, a, input, select, textarea"); }
+  gameContainer.addEventListener("click", function (event) {
+    if (!onControl(event)) gameContainer.focus({ preventScroll: true });
+  });
   gameContainer.addEventListener(this.eventTouchstart, function (event) {
+    if (onControl(event)) return;
     if ((!window.navigator.msPointerEnabled && event.touches.length > 1) ||
         event.targetTouches.length > 1) {
       return; // Ignore if touching with more than 1 finger
@@ -91,14 +107,17 @@ KeyboardInputManager.prototype.listen = function () {
       touchStartClientY = event.touches[0].clientY;
     }
 
+    gameContainer.focus({ preventScroll: true });
     event.preventDefault();
   });
 
   gameContainer.addEventListener(this.eventTouchmove, function (event) {
+    if (onControl(event)) return;
     event.preventDefault();
   });
 
   gameContainer.addEventListener(this.eventTouchend, function (event) {
+    if (onControl(event)) return;
     if ((!window.navigator.msPointerEnabled && event.touches.length > 0) ||
         event.targetTouches.length > 0) {
       return; // Ignore if still touching with one or more fingers
@@ -130,15 +149,19 @@ KeyboardInputManager.prototype.listen = function () {
 KeyboardInputManager.prototype.restart = function (event) {
   event.preventDefault();
   this.emit("restart");
+  if (event.currentTarget && event.currentTarget.classList.contains("retry-button")) {
+    document.getElementsByClassName("game-container")[0].focus({ preventScroll: true });
+  }
 };
 
 KeyboardInputManager.prototype.keepPlaying = function (event) {
   event.preventDefault();
   this.emit("keepPlaying");
+  document.getElementsByClassName("game-container")[0].focus({ preventScroll: true });
 };
 
 KeyboardInputManager.prototype.bindButtonPress = function (selector, fn) {
   var button = document.querySelector(selector);
   button.addEventListener("click", fn.bind(this));
-  button.addEventListener(this.eventTouchend, fn.bind(this));
+  // Native buttons synthesize one click for mouse, touch, Enter and Space.
 };
